@@ -3,6 +3,9 @@ from dotenv import load_dotenv
 import os
 import psycopg2
 import psycopg2.extras
+from flask.views import MethodView
+from flask_smorest import Blueprint, Api
+from flask_smorest import abort
 
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
@@ -25,57 +28,60 @@ def get_db_connection():
             return None
     return conn
 
-# Ruta principal que ahora devolverá un mensaje
-@app.route('/', methods=['GET'])
-def index():
-    return jsonify({
-        "message": "Bienvenido a mi Web Service de usuarios.",
-        "endpoints": {
-            "GET /api/saludo": "Devuelve un mensaje de saludo.",
-            "GET /api/usuarios": "Obtiene la lista de todos los usuarios.",
-            "POST /api/usuarios": "Crea un nuevo usuario."
-        }
-    })
+# Configuración de la API con Swagger
+app.config["API_TITLE"] = "Web Service UMG"
+app.config["API_VERSION"] = "v1"
+app.config["OPENAPI_VERSION"] = "3.0.2"
+app.config["OPENAPI_URL_PREFIX"] = "/"
+app.config["OPENAPI_SWAGGER_UI_PATH"] = "/docs"
+app.config["OPENAPI_SWAGGER_UI_URL"] = "https://cdn.jsdelivr.net/npm/swagger-ui-dist/"
 
-# Ruta de saludo
-@app.route('/api/saludo', methods=['GET'])
-def saludo():
-    return jsonify({"mensaje": "¡Hola desde mi Web Service en Render!"})
+api = Api(app)
+blp = Blueprint("usuarios", __name__, url_prefix="/api", description="Operaciones con usuarios")
 
-# Ruta para obtener todos los usuarios
-@app.route('/api/usuarios', methods=['GET'])
-def get_usuarios():
-    conn = get_db_connection()
-    if conn is None:
-        return jsonify({"error": "Error de conexión a la base de datos"}), 500
-    try:
-        cur.execute("SELECT id_usuario, nombre, correo, fecha_reg FROM usuarios ORDER BY id_usuario DESC")
-        usuarios = cur.fetchall()
-        return jsonify(usuarios)
-    except Exception as e:
-        return jsonify({"error": f"Error al obtener usuarios: {e}"}), 500
+@blp.route("/usuarios")
+class UsuarioList(MethodView):
 
-# Ruta para crear un nuevo usuario (POST)
-@app.route('/api/usuarios', methods=['POST'])
-def create_usuario():
-    conn = get_db_connection()
-    if conn is None:
-        return jsonify({"error": "Error de conexión a la base de datos"}), 500
-    try:
-        data = request.get_json()
-        nombre = data['nombre']
-        correo = data['correo']
-        password = data['password']
-        
-        cur.execute("INSERT INTO usuarios (nombre, correo, password) VALUES (%s, %s, %s) RETURNING id_usuario", (nombre, correo, password))
-        conn.commit()
-        
-        nuevo_usuario_id = cur.fetchone()['id_usuario']
-        
-        return jsonify({"mensaje": "Usuario creado con éxito", "id_usuario": nuevo_usuario_id}), 201
-    except Exception as e:
-        conn.rollback()
-        return jsonify({"error": f"Error al crear usuario: {e}"}), 400
+    def get(self):
+        """Lista todos los usuarios."""
+        conn = get_db_connection()
+        if conn is None:
+            abort(500, message="Error de conexión a la base de datos")
+        try:
+            cur.execute("SELECT id_usuario, nombre, correo, fecha_reg FROM usuarios ORDER BY id_usuario DESC")
+            usuarios = cur.fetchall()
+            return jsonify(usuarios)
+        except Exception as e:
+            abort(500, message=f"Error al obtener usuarios: {e}")
+
+    def post(self):
+        """Crea un nuevo usuario."""
+        conn = get_db_connection()
+        if conn is None:
+            abort(500, message="Error de conexión a la base de datos")
+        try:
+            data = request.get_json()
+            nombre = data['nombre']
+            correo = data['correo']
+            password = data['password']
+            
+            cur.execute("INSERT INTO usuarios (nombre, correo, password) VALUES (%s, %s, %s) RETURNING id_usuario", (nombre, correo, password))
+            conn.commit()
+            
+            nuevo_usuario_id = cur.fetchone()['id_usuario']
+            
+            return jsonify({"mensaje": "Usuario creado con éxito", "id_usuario": nuevo_usuario_id}), 201
+        except Exception as e:
+            conn.rollback()
+            abort(400, message=f"Error al crear usuario: {e}")
+
+@blp.route("/saludo")
+class Saludo(MethodView):
+    def get(self):
+        """Devuelve un mensaje de saludo."""
+        return jsonify({"mensaje": "¡Hola desde mi Web Service en Render!"})
+
+api.register_blueprint(blp)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
