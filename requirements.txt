@@ -1,6 +1,5 @@
-fastapi==0.112.2
-uvicorn==0.30.6
-SQLAlchemy==2.0.34
-psycopg[binary]==3.2.1
-gunicorn==22.0.0
-email-validator==2.2.0
+flask
+gunicorn
+psycopg2-binary
+python-dotenv
+flask-smorest
